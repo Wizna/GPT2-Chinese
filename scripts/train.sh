@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 python train.py \
   --model_config config/model_config_small.json \
   --tokenized_data_path data/tokenized/ \

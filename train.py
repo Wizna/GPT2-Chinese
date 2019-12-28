@@ -52,7 +52,8 @@ def main():
     parser.add_argument('--batch_size', default=8, type=int, required=False, help='训练batch size')
     parser.add_argument('--lr', default=1.5e-4, type=float, required=False, help='学习率')
     parser.add_argument('--warmup_steps', default=2000, type=int, required=False, help='warm up步数')
-    parser.add_argument('--log_step', default=1, type=int, required=False, help='多少步汇报一次loss，设置为gradient accumulation的整数倍')
+    parser.add_argument('--log_step', default=1, type=int, required=False,
+                        help='多少步汇报一次loss，设置为gradient accumulation的整数倍')
     parser.add_argument('--stride', default=768, type=int, required=False, help='训练时取训练数据的窗口步长')
     parser.add_argument('--gradient_accumulation', default=1, type=int, required=False, help='梯度积累')
     parser.add_argument('--fp16', action='store_true', help='混合精度')
@@ -142,7 +143,7 @@ def main():
 
     optimizer = transformers.AdamW(model.parameters(), lr=lr, correct_bias=True)
     scheduler = transformers.WarmupLinearSchedule(optimizer, warmup_steps=warmup_steps,
-                                                          t_total=total_steps)
+                                                  t_total=total_steps)
     if fp16:
         try:
             from apex import amp
@@ -175,7 +176,7 @@ def main():
                 samples.append(tokens[start_point: start_point + n_ctx])
                 start_point += stride
             if start_point < len(tokens):
-                samples.append(tokens[len(tokens)-n_ctx:])
+                samples.append(tokens[len(tokens) - n_ctx:])
             random.shuffle(samples)
             for step in range(len(samples) // batch_size):  # drop last
 

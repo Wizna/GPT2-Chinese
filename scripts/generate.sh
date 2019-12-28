@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 python generate.py \
   --device 0 \
   --length 900 \
@@ -6,3 +7,4 @@ python generate.py \
   --prefix "[CLS][MASK]" \
   --topp 1 \
   --temperature 1.0
+
