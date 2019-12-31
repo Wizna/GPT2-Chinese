@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
+
 python train.py \
-  --model_config config/model_config_small.json \
+  --model_config model/model_epoch15/config.json \
   --tokenized_data_path data/tokenized/ \
   --tokenizer_path cache/vocab_small.txt \
   --raw_data_path data/train.json \
@@ -10,4 +10,6 @@ python train.py \
   --output_dir model/ \
   --device 0,1,2,3 \
   --num_pieces 100 \
-  --raw
+  --min_length 20 \
+  --batch_size 4 \
+  --pretrained_model model/model_epoch15

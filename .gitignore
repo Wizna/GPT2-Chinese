@@ -10,4 +10,6 @@ data/
 .idea/vcs.xml
 .idea
 
-venv
+3.6.3_venv
+tensorboard_summary
+
