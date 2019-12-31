@@ -144,12 +144,12 @@ def main():
     optimizer = transformers.AdamW(model.parameters(), lr=lr, correct_bias=True)
     scheduler = transformers.WarmupLinearSchedule(optimizer, warmup_steps=warmup_steps,
                                                   t_total=total_steps)
-    if fp16:
-        try:
-            from apex import amp
-        except ImportError:
-            raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
-        model, optimizer = amp.initialize(model, optimizer, opt_level=fp16_opt_level)
+    # if fp16:
+    #     try:
+    #         from apex import amp
+    #     except ImportError:
+    #         raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
+    #     model, optimizer = amp.initialize(model, optimizer, opt_level=fp16_opt_level)
 
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -158,6 +158,14 @@ def main():
     print('starting training')
     overall_step = 0
     running_loss = 0
+
+    # note: reload the states from resume model
+    if args.pretrained_model:
+        resume_states = torch.load(os.path.join(args.pretrained_model + 'states.pt'))
+        overall_step = resume_states['overall_step']
+        optimizer.load_state_dict(resume_states['optimizer'])
+        scheduler.load_state_dict(resume_states['scheduler'])
+
     for epoch in range(epochs):
         print('epoch {}'.format(epoch + 1))
         now = datetime.now()
@@ -198,14 +206,14 @@ def main():
                 if gradient_accumulation > 1:
                     loss = loss / gradient_accumulation
 
-                #  loss backward
-                if fp16:
-                    with amp.scale_loss(loss, optimizer) as scaled_loss:
-                        scaled_loss.backward()
-                        torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), max_grad_norm)
-                else:
-                    loss.backward()
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+                # loss backward
+                # if fp16:
+                #     with amp.scale_loss(loss, optimizer) as scaled_loss:
+                #         scaled_loss.backward()
+                #         torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), max_grad_norm)
+                # else:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
 
                 #  optimizer step
                 if (overall_step + 1) % gradient_accumulation == 0:
@@ -231,6 +239,11 @@ def main():
             os.mkdir(output_dir + 'model_epoch{}'.format(epoch + 1))
         model_to_save = model.module if hasattr(model, 'module') else model
         model_to_save.save_pretrained(output_dir + 'model_epoch{}'.format(epoch + 1))
+
+        torch.save({'overall_step': overall_step,
+                    'optimizer': optimizer.state_dict(),
+                    'scheduler': scheduler.state_dict()},
+                   output_dir + 'model_epoch{}/states.pt'.format(epoch + 1))
         # torch.save(scheduler.state_dict(), output_dir + 'model_epoch{}/scheduler.pt'.format(epoch + 1))
         # torch.save(optimizer.state_dict(), output_dir + 'model_epoch{}/optimizer.pt'.format(epoch + 1))
         print('epoch {} finished'.format(epoch + 1))
@@ -244,6 +257,11 @@ def main():
         os.mkdir(output_dir + 'final_model')
     model_to_save = model.module if hasattr(model, 'module') else model
     model_to_save.save_pretrained(output_dir + 'final_model')
+
+    torch.save({'overall_step': overall_step,
+                'optimizer': optimizer.state_dict(),
+                'scheduler': scheduler.state_dict()},
+               output_dir + 'final_model/states.pt')
     # torch.save(scheduler.state_dict(), output_dir + 'final_model/scheduler.pt')
     # torch.save(optimizer.state_dict(), output_dir + 'final_model/optimizer.pt')
 
