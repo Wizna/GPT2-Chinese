@@ -13,5 +13,7 @@ python train.py \
   --min_length 20 \
   --batch_size 4 \
   --segment \
+  --raw \
+
 
 #  --pretrained_model model/model_epoch15

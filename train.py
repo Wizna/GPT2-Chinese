@@ -244,7 +244,7 @@ def main():
         model_to_save.save_pretrained(output_dir + 'model_epoch{}'.format(epoch + 1))
 
         torch.save({'overall_step': overall_step,
-                    'epoch': epoch,
+                    'epoch': epoch + 1,
                     'optimizer': optimizer.state_dict(),
                     'scheduler': scheduler.state_dict()},
                    output_dir + 'model_epoch{}/states.pt'.format(epoch + 1))
