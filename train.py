@@ -159,14 +159,17 @@ def main():
     overall_step = 0
     running_loss = 0
 
+    start_epoch = 0
+
     # note: reload the states from resume model
     if args.pretrained_model:
-        resume_states = torch.load(os.path.join(args.pretrained_model + 'states.pt'))
+        resume_states = torch.load(os.path.join(args.pretrained_model, 'states.pt'))
         overall_step = resume_states['overall_step']
+        start_epoch = resume_states['epoch']
         optimizer.load_state_dict(resume_states['optimizer'])
         scheduler.load_state_dict(resume_states['scheduler'])
 
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         print('epoch {}'.format(epoch + 1))
         now = datetime.now()
         print('time: {}'.format(now))
@@ -241,6 +244,7 @@ def main():
         model_to_save.save_pretrained(output_dir + 'model_epoch{}'.format(epoch + 1))
 
         torch.save({'overall_step': overall_step,
+                    'epoch': epoch,
                     'optimizer': optimizer.state_dict(),
                     'scheduler': scheduler.state_dict()},
                    output_dir + 'model_epoch{}/states.pt'.format(epoch + 1))
@@ -259,6 +263,7 @@ def main():
     model_to_save.save_pretrained(output_dir + 'final_model')
 
     torch.save({'overall_step': overall_step,
+                'epoch': 0,
                 'optimizer': optimizer.state_dict(),
                 'scheduler': scheduler.state_dict()},
                output_dir + 'final_model/states.pt')
