@@ -33,8 +33,8 @@ def build_files(data_path, tokenized_data_path, num_pieces, full_tokenizer, min_
             full_line.extend(subline)
             full_line.append(full_tokenizer.convert_tokens_to_ids('[CLS]'))  # 文章之间添加CLS表示文章结束
         with open(tokenized_data_path + 'tokenized_train_{}.txt'.format(i), 'w') as f:
-            for id in full_line:
-                f.write(str(id) + ' ')
+            for id_num in full_line:
+                f.write(str(id_num) + ' ')
     print('finish')
 
 
@@ -101,8 +101,8 @@ def main():
     log_step = args.log_step
     stride = args.stride
     gradient_accumulation = args.gradient_accumulation
-    fp16 = args.fp16  # 不支持半精度的显卡请勿打开
-    fp16_opt_level = args.fp16_opt_level
+    # fp16 = args.fp16  # 不支持半精度的显卡请勿打开
+    # fp16_opt_level = args.fp16_opt_level
     max_grad_norm = args.max_grad_norm
     num_pieces = args.num_pieces
     min_length = args.min_length
@@ -223,7 +223,7 @@ def main():
                     running_loss += loss.item()
                     optimizer.step()
                     optimizer.zero_grad()
-                    scheduler.step()
+                    scheduler.step(epoch=epoch)
                 if (overall_step + 1) % log_step == 0:
                     tb_writer.add_scalar('loss', loss.item() * gradient_accumulation, overall_step)
                     print('now time: {}:{}. Step {} of piece {} of epoch {}, loss {}'.format(

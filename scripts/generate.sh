@@ -2,9 +2,11 @@
 python generate.py \
   --device 0 \
   --length 900 \
-  --tokenizer_path cache/vocab_small.txt \
-  --model_path model/model_epoch15 \
+  --tokenizer_path cache/vocab_user.txt \
+  --model_path 'C:\\Users\\Ruiming Huang\\Desktop\\chkp8' \
   --prefix "[CLS][MASK]" \
-  --topp 1 \
-  --temperature 1.0
+  --topp 1.0 \
+  --temperature 1.0 \
+  --nsamples 3 \
+
 

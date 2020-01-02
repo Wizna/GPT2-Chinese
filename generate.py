@@ -2,13 +2,14 @@ import torch
 import torch.nn.functional as F
 import os
 import argparse
+import string
 from tqdm import trange
 from transformers import GPT2LMHeadModel
 
 
 def is_word(word):
     for item in list(word):
-        if item not in 'qwertyuiopasdfghjklzxcvbnm':
+        if item not in string.ascii_lowercase:
             return False
     return True
 
@@ -24,14 +25,14 @@ def _is_chinese_char(char):
     # space-separated words, so they are not treated specially and handled
     # like the all of the other languages.
     cp = ord(char)
-    if ((cp >= 0x4E00 and cp <= 0x9FFF) or  #
-            (cp >= 0x3400 and cp <= 0x4DBF) or  #
-            (cp >= 0x20000 and cp <= 0x2A6DF) or  #
-            (cp >= 0x2A700 and cp <= 0x2B73F) or  #
-            (cp >= 0x2B740 and cp <= 0x2B81F) or  #
-            (cp >= 0x2B820 and cp <= 0x2CEAF) or
-            (cp >= 0xF900 and cp <= 0xFAFF) or  #
-            (cp >= 0x2F800 and cp <= 0x2FA1F)):  #
+    if ((0x4E00 <= cp <= 0x9FFF) or  #
+            (0x3400 <= cp <= 0x4DBF) or  #
+            (0x20000 <= cp <= 0x2A6DF) or  #
+            (0x2A700 <= cp <= 0x2B73F) or  #
+            (0x2B740 <= cp <= 0x2B81F) or  #
+            (0x2B820 <= cp <= 0x2CEAF) or
+            (0xF900 <= cp <= 0xFAFF) or  #
+            (0x2F800 <= cp <= 0x2FA1F)):  #
         return True
 
     return False
@@ -68,7 +69,11 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
     return logits
 
 
-def sample_sequence(model, context, length, n_ctx, tokenizer, temperature=1.0, top_k=30, top_p=0.0, repitition_penalty=1.0,
+def sample_sequence(model, context, length, n_ctx, tokenizer,
+                    temperature=1.0,
+                    top_k=30,
+                    top_p=0.0,
+                    repetition_penalty=1.0,
                     device='cpu'):
     context = torch.tensor(context, dtype=torch.long, device=device)
     context = context.unsqueeze(0)
@@ -79,8 +84,8 @@ def sample_sequence(model, context, length, n_ctx, tokenizer, temperature=1.0, t
             outputs = model(
                 **inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet (cached hidden-states)
             next_token_logits = outputs[0][0, -1, :]
-            for id in set(generated):
-                next_token_logits[id] /= repitition_penalty
+            for id_num in set(generated):
+                next_token_logits[id_num] /= repetition_penalty
             next_token_logits = next_token_logits / temperature
             next_token_logits[tokenizer.convert_tokens_to_ids('[UNK]')] = -float('Inf')
             filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
@@ -111,14 +116,16 @@ def fast_sample_sequence(model, context, length, temperature=1.0, top_k=30, top_
 
 
 # 通过命令行参数--fast_pattern，指定模式
-def generate(n_ctx, model, context, length, tokenizer, temperature=1, top_k=0, top_p=0.0, repitition_penalty=1.0, device='cpu',
+def generate(n_ctx, model, context, length, tokenizer, temperature=1, top_k=0, top_p=0.0, repetition_penalty=1.0,
+             device='cpu',
              is_fast_pattern=False):
     if is_fast_pattern:
         return fast_sample_sequence(model, context, length, temperature=temperature, top_k=top_k, top_p=top_p,
                                     device=device)
     else:
-        return sample_sequence(model, context, length, n_ctx, tokenizer=tokenizer, temperature=temperature, top_k=top_k, top_p=top_p,
-                               repitition_penalty=repitition_penalty, device=device)
+        return sample_sequence(model, context, length, n_ctx, tokenizer=tokenizer, temperature=temperature, top_k=top_k,
+                               top_p=top_p,
+                               repetition_penalty=repetition_penalty, device=device)
 
 
 def main():
@@ -179,37 +186,40 @@ def main():
         context_tokens = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(raw_text))
         generated = 0
         for _ in range(nsamples // batch_size):
-            out = generate(
-                n_ctx=n_ctx,
-                model=model,
-                context=context_tokens,
-                length=length,
-                is_fast_pattern=args.fast_pattern, tokenizer=tokenizer,
-                temperature=temperature, top_k=topk, top_p=topp, repitition_penalty=repetition_penalty, device=device
-            )
-            for i in range(batch_size):
-                generated += 1
-                text = tokenizer.convert_ids_to_tokens(out)
-                for i, item in enumerate(text[:-1]):  # 确保英文前后有空格
-                    if is_word(item) and is_word(text[i + 1]):
-                        text[i] = item + ' '
-                for i, item in enumerate(text):
-                    if item == '[MASK]':
-                        text[i] = ''
-                    elif item == '[CLS]':
-                        text[i] = '\n\n'
-                    elif item == '[SEP]':
-                        text[i] = '\n'
-                info = "=" * 40 + " SAMPLE " + str(generated) + " " + "=" * 40 + "\n"
-                print(info)
-                text = ''.join(text).replace('##', '').strip()
-                print(text)
-                if args.save_samples:
-                    samples_file.write(info)
-                    samples_file.write(text)
-                    samples_file.write('\n')
-                    samples_file.write('=' * 90)
-                    samples_file.write('\n' * 2)
+            out = generate(n_ctx=n_ctx,
+                           model=model,
+                           context=context_tokens,
+                           length=length,
+                           is_fast_pattern=args.fast_pattern,
+                           tokenizer=tokenizer,
+                           temperature=temperature,
+                           top_k=topk,
+                           top_p=topp,
+                           repetition_penalty=repetition_penalty,
+                           device=device)
+            # for i in range(batch_size):
+            generated += 1
+            text = tokenizer.convert_ids_to_tokens(out)
+            for i, item in enumerate(text[:-1]):  # 确保英文前后有空格
+                if is_word(item) and is_word(text[i + 1]):
+                    text[i] = item + ' '
+            for i, item in enumerate(text):
+                if item == '[MASK]':
+                    text[i] = ''
+                elif item == '[CLS]':
+                    text[i] = '\n\n'
+                elif item == '[SEP]':
+                    text[i] = '\n'
+            info = "=" * 40 + " SAMPLE " + str(generated) + " " + "=" * 40 + "\n"
+            print(info)
+            text = ''.join(text).replace('##', '').strip()
+            print(text)
+            if args.save_samples:
+                samples_file.write(info)
+                samples_file.write(text)
+                samples_file.write('\n')
+                samples_file.write('=' * 90)
+                samples_file.write('\n' * 2)
         print("=" * 80)
         if generated == nsamples:
             # close file when finish writing.
