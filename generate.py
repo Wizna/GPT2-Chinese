@@ -167,18 +167,15 @@ def generate(n_ctx, model, context, length, tokenizer, temperature=1, top_k=0, t
 def find_repeating_sequence_from_list(arr):
     result = {}
     longest = len(arr) // 2
-    remain = set(range(len(arr) + 1))
+    remain = set(i for i in range(len(arr)) if arr[i] != 102)
 
     for length in range(longest, 2, -1):
-        pos = [p for p in remain if p + length in remain]
+        pos = [p for p in remain if p + length - 1 in remain]
         for s1, s2 in combinations(pos, 2):
-            if s2 - s1 < length:
-                continue
-            else:
-                if arr[s1:s1 + length] == arr[s2:s2 + length]:
-                    remain -= set(range(s1, s1 + length))
-                    remain -= set(range(s2, s2 + length))
-                    result[s2] = (s1, length)
+            if s2 - s1 >= length and arr[s1:s1 + length] == arr[s2:s2 + length]:
+                remain -= set(range(s1, s1 + length))
+                remain -= set(range(s2, s2 + length))
+                result[s2] = (s1, length)
 
     return result
 
@@ -255,7 +252,7 @@ def main():
         context_tokens = read_and_tokenize_text(args.prefix, tokenizer=tokenizer)
         lyric_tokens = read_and_tokenize_text(args.original_lyric, tokenizer=tokenizer)
         repeat_map = find_repeating_sequence_from_list(lyric_tokens)
-        length = 60 # len(lyric_tokens)
+        length = 60  # len(lyric_tokens)
         generated = 0
         for _ in range(nsamples // batch_size):
             out = generate(n_ctx=n_ctx,
