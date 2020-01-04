@@ -71,7 +71,7 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 
 
 def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetition_penalty, top_k, top_p, temperature,
-                              tokenizer, repeat_map, starting_point):
+                              tokenizer, repeat_map, starting_point, device, length_of_context):
     traversed_tree = {}
     while True:
         tmp_generated = generated.clone().detach()
@@ -80,9 +80,18 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
         while index < n + 1:
             if (index + starting_point) in repeat_map:
                 start, span = repeat_map[index + starting_point]
-                tmp_generated = torch.cat((tmp_generated, tmp_generated[0][start:start + span].unsqueeze(0)), dim=1)
+                tmp_generated = torch.cat((tmp_generated,
+                                           tmp_generated[0][
+                                           start + length_of_context:start + length_of_context + span].unsqueeze(
+                                               0)), dim=1)
                 index += span
-                continue
+                if index >= n:
+                    tmp_generated = torch.cat((tmp_generated, torch.tensor([[102]], device=device)), dim=1)
+                    print(f'return directly after repeat')
+                    return tmp_generated, index + starting_point + 1
+                else:
+                    print(f'keep for next token')
+                    continue
             inputs = {'input_ids': tmp_generated[0].unsqueeze(0)}
             outputs = model(**inputs)
             next_token_logits = outputs[0][0, -1, :] / temperature
@@ -100,12 +109,12 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
             if next_token in [101, 102]:
                 if index == n + 1:
                     print(f'succeeded')
-                    return tmp_generated
+                    return tmp_generated, index + starting_point
                 else:
-                    print(f'has a sep at:{index}')
+                    # print(f'has a sep at:{index}')
                     break
-        else:
-            print(f'long enough:{index}')
+        # else:
+        #     print(f'long enough:{index}')
 
 
 def distance_from_next_sep(lyric, start):
@@ -135,16 +144,24 @@ def sample_sequence(model, context, length, n_ctx, tokenizer,
 
     print(f'the repeat_map:{repeat_map}')
     index = 2
+
+    length_of_context = context.size()[1] - 2 # note: this 2 is compensate for the starting index 2
+    print(f'length of previous context:{length_of_context}')
+
     with torch.no_grad():
         while index < length:
             distance = distance_from_next_sep(model_lyric, start=index)
             print(f'generating index:{index}, needed distance:{distance}')
 
-            generated = sample_sequence_of_length(model=model, n=distance, generated=generated, n_ctx=n_ctx,
-                                                  token_descend=token_descend, repetition_penalty=repetition_penalty,
-                                                  top_k=top_k, top_p=top_p, temperature=temperature,
-                                                  tokenizer=tokenizer, repeat_map=repeat_map, starting_point=index)
-            index = index + distance + 1
+            generated, new_index = sample_sequence_of_length(model=model, n=distance, generated=generated, n_ctx=n_ctx,
+                                                             token_descend=token_descend,
+                                                             repetition_penalty=repetition_penalty,
+                                                             top_k=top_k, top_p=top_p, temperature=temperature,
+                                                             tokenizer=tokenizer, repeat_map=repeat_map,
+                                                             starting_point=index,
+                                                             device=device,
+                                                             length_of_context=length_of_context)
+            index = new_index
 
     return generated.tolist()[0]
 
