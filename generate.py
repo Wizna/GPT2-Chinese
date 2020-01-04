@@ -106,15 +106,15 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
             tmp_tree = tmp_tree[next_token.item()]
             index += 1
 
-            if next_token in [101, 102]:
+            if next_token in [0, 100, 101, 102, 103]:
                 if index == n + 1:
                     # print(f'succeeded')
                     return tmp_generated, index + starting_point
                 else:
                     # print(f'has a sep at:{index}')
                     break
-        # else:
-        #     print(f'long enough:{index}')
+                    # else:
+                    #     print(f'long enough:{index}')
 
 
 def distance_from_next_sep(lyric, start):
@@ -145,7 +145,7 @@ def sample_sequence(model, context, length, n_ctx, tokenizer,
     print(f'the repeat_map:{repeat_map}')
     index = 2
 
-    length_of_context = context.size()[1] - 2 # note: this 2 is compensate for the starting index 2
+    length_of_context = context.size()[1] - 2  # note: this 2 is compensate for the starting index 2
     print(f'length of previous context:{length_of_context}')
 
     with torch.no_grad():
