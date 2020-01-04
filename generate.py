@@ -73,7 +73,8 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetition_penalty, top_k, top_p, temperature,
                               tokenizer, repeat_map, starting_point, device, length_of_context):
     traversed_tree = {}
-    while True:
+    longer_candidate = torch.zeros(size=(1, n + 1), device=device)
+    for _ in range(100):
         tmp_generated = generated.clone().detach()
         tmp_tree = traversed_tree
         index = 0
@@ -113,8 +114,12 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
                 else:
                     # print(f'has a sep at:{index}')
                     break
-                    # else:
-                    #     print(f'long enough:{index}')
+        else:
+            longer_candidate = tmp_generated.clone().detach()
+            longer_candidate[0][-1] = 102
+    else:
+        print('use saved longer candidate')
+        return longer_candidate, n + starting_point + 1
 
 
 def distance_from_next_sep(lyric, start):
