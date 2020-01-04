@@ -70,6 +70,28 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
     return logits
 
 
+def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetition_penalty, top_k, top_p, temperature,
+                              tokenizer):
+    next_token = torch.tensor(data=102)
+    while next_token in [101, 102]:
+        inputs = {'input_ids': generated[0][-(n_ctx - 1):].unsqueeze(0)}
+        outputs = model(**inputs)
+        next_token_logits = outputs[0][0, -1, :]
+        for id_values in set(generated):
+            # print(f"id_num: {id_num}")
+            for id_num in id_values:
+                if id_num in token_descend:
+                    frequency_index = token_descend.index(id_num)
+                    next_token_logits[id_num] /= (
+                        repetition_penalty / (frequency_index + 6) * (frequency_index + 5))
+        next_token_logits = next_token_logits / temperature
+        next_token_logits[tokenizer.convert_tokens_to_ids('[UNK]')] = -float('Inf')
+        filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
+        next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
+    generated = torch.cat((generated, next_token.unsqueeze(0)), dim=1)
+    return generated
+
+
 def sample_sequence(model, context, length, n_ctx, tokenizer,
                     temperature=1.0,
                     top_k=30,
@@ -99,12 +121,12 @@ def sample_sequence(model, context, length, n_ctx, tokenizer,
                 index += span
                 continue
             elif model_lyric[index] == 102:
-                generated = torch.cat((generated, torch.tensor([[102]])), dim=1)
+                generated = torch.cat((generated, torch.tensor([[102]], device=device)), dim=1)
                 index += 1
                 continue
 
-            next_token = torch.tensor(data=102)
-            while next_token == 102:
+            next_token = torch.tensor(data=102, device=device)
+            while next_token in [101, 102]:
                 inputs = {'input_ids': generated[0][-(n_ctx - 1):].unsqueeze(0)}
                 outputs = model(
                     **inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet (cached hidden-states)
