@@ -90,7 +90,7 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
                     print(f'return directly after repeat')
                     return tmp_generated, index + starting_point + 1
                 else:
-                    print(f'keep for next token')
+                    # print(f'keep for next token')
                     continue
             inputs = {'input_ids': tmp_generated[0].unsqueeze(0)}
             outputs = model(**inputs)
@@ -108,7 +108,7 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
 
             if next_token in [101, 102]:
                 if index == n + 1:
-                    print(f'succeeded')
+                    # print(f'succeeded')
                     return tmp_generated, index + starting_point
                 else:
                     # print(f'has a sep at:{index}')
@@ -312,6 +312,7 @@ def main():
             # for i in range(batch_size):
             generated += 1
             text = tokenizer.convert_ids_to_tokens(out)
+            text = text[len(context_tokens):]
             for i, item in enumerate(text[:-1]):  # 确保英文前后有空格
                 if is_word(item) and is_word(text[i + 1]):
                     text[i] = item + ' '
