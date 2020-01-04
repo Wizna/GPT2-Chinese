@@ -71,25 +71,49 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 
 
 def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetition_penalty, top_k, top_p, temperature,
-                              tokenizer):
-    next_token = torch.tensor(data=102)
-    while next_token in [101, 102]:
-        inputs = {'input_ids': generated[0][-(n_ctx - 1):].unsqueeze(0)}
-        outputs = model(**inputs)
-        next_token_logits = outputs[0][0, -1, :]
-        for id_values in set(generated):
-            # print(f"id_num: {id_num}")
-            for id_num in id_values:
-                if id_num in token_descend:
-                    frequency_index = token_descend.index(id_num)
-                    next_token_logits[id_num] /= (
-                        repetition_penalty / (frequency_index + 6) * (frequency_index + 5))
-        next_token_logits = next_token_logits / temperature
-        next_token_logits[tokenizer.convert_tokens_to_ids('[UNK]')] = -float('Inf')
-        filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
-        next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
-    generated = torch.cat((generated, next_token.unsqueeze(0)), dim=1)
-    return generated
+                              tokenizer, repeat_map, starting_point):
+    traversed_tree = {}
+    while True:
+        tmp_generated = generated.clone().detach()
+        tmp_tree = traversed_tree
+        index = 0
+        while index < n + 1:
+            if (index + starting_point) in repeat_map:
+                start, span = repeat_map[index + starting_point]
+                tmp_generated = torch.cat((tmp_generated, tmp_generated[0][start:start + span].unsqueeze(0)), dim=1)
+                index += span
+                continue
+            inputs = {'input_ids': tmp_generated[0].unsqueeze(0)}
+            outputs = model(**inputs)
+            next_token_logits = outputs[0][0, -1, :] / temperature
+            next_token_logits[tokenizer.convert_tokens_to_ids('[UNK]')] = -float('Inf')
+            next_token_logits[list(tmp_tree.keys())] /= (repetition_penalty ** (index + 1))
+            filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
+            next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
+            tmp_generated = torch.cat((tmp_generated, next_token.unsqueeze(0)), dim=1)
+            if next_token.item() not in tmp_tree:
+                tmp_tree[next_token.item()] = {}
+
+            tmp_tree = tmp_tree[next_token.item()]
+            index += 1
+
+            if next_token in [101, 102]:
+                if index == n + 1:
+                    print(f'succeeded')
+                    return tmp_generated
+                else:
+                    print(f'has a sep at:{index}')
+                    break
+        else:
+            print(f'long enough:{index}')
+
+
+def distance_from_next_sep(lyric, start):
+    for i in range(start, len(lyric)):
+        if lyric[i] == 102:
+            return i - start
+
+    return len(lyric) - start
 
 
 def sample_sequence(model, context, length, n_ctx, tokenizer,
@@ -107,45 +131,21 @@ def sample_sequence(model, context, length, n_ctx, tokenizer,
     with open('word_frequency.txt', 'r', encoding='utf-8') as f:
         word_descend = f.readline()
         token_descend = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word_descend))
-        # print(len(token_descend))
         token_descend = [x for x in token_descend if x != 100]
-        # print(len(token_descend))
 
     print(f'the repeat_map:{repeat_map}')
     index = 2
     with torch.no_grad():
         while index < length:
-            if index in repeat_map:
-                start, span = repeat_map[index]
-                generated = torch.cat((generated, generated[0][start:start + span].unsqueeze(0)), dim=1)
-                index += span
-                continue
-            elif model_lyric[index] == 102:
-                generated = torch.cat((generated, torch.tensor([[102]], device=device)), dim=1)
-                index += 1
-                continue
+            distance = distance_from_next_sep(model_lyric, start=index)
+            print(f'generating index:{index}, needed distance:{distance}')
 
-            next_token = torch.tensor(data=102, device=device)
-            while next_token in [101, 102]:
-                inputs = {'input_ids': generated[0][-(n_ctx - 1):].unsqueeze(0)}
-                outputs = model(
-                    **inputs)  # Note: we could also use 'past' with GPT-2/Transfo-XL/XLNet (cached hidden-states)
-                next_token_logits = outputs[0][0, -1, :]
-                for id_values in set(generated):
-                    # print(f"id_num: {id_num}")
-                    for id_num in id_values:
-                        if id_num in token_descend:
-                            frequency_index = token_descend.index(id_num)
-                            next_token_logits[id_num] /= (
-                                repetition_penalty / (frequency_index + 6) * (frequency_index + 5))
-                next_token_logits = next_token_logits / temperature
-                next_token_logits[tokenizer.convert_tokens_to_ids('[UNK]')] = -float('Inf')
-                filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
-                next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
-            generated = torch.cat((generated, next_token.unsqueeze(0)), dim=1)
-            # print(f'the generated:{generated}')
-            print(next_token)
-            index += 1
+            generated = sample_sequence_of_length(model=model, n=distance, generated=generated, n_ctx=n_ctx,
+                                                  token_descend=token_descend, repetition_penalty=repetition_penalty,
+                                                  top_k=top_k, top_p=top_p, temperature=temperature,
+                                                  tokenizer=tokenizer, repeat_map=repeat_map, starting_point=index)
+            index = index + distance + 1
+
     return generated.tolist()[0]
 
 
@@ -157,17 +157,19 @@ def fast_sample_sequence(model, context, length, temperature=1.0, top_k=30, top_
     else:
         past = None
         prev = inputs
-    generate = [] + context
+    generated = [] + context
     with torch.no_grad():
-        for i in trange(length):
+        for _ in trange(length):
             output = model(prev, past=past)
             output, past = output[:2]
             output = output[-1].squeeze(0) / temperature
             filtered_logits = top_k_top_p_filtering(output, top_k=top_k, top_p=top_p)
             next_token = torch.multinomial(torch.softmax(filtered_logits, dim=-1), num_samples=1)
-            generate.append(next_token.item())
+            generated.append(next_token.item())
             prev = next_token.view(1, 1)
-    return generate
+            if next_token in [101, 102]:
+                break
+    return generated
 
 
 # 通过命令行参数--fast_pattern，指定模式
@@ -274,7 +276,7 @@ def main():
         context_tokens = read_and_tokenize_text(args.prefix, tokenizer=tokenizer)
         lyric_tokens = read_and_tokenize_text(args.original_lyric, tokenizer=tokenizer)
         repeat_map = find_repeating_sequence_from_list(lyric_tokens)
-        length = 60  # len(lyric_tokens)
+        length = len(lyric_tokens)
         generated = 0
         for _ in range(nsamples // batch_size):
             out = generate(n_ctx=n_ctx,
