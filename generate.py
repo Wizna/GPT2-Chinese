@@ -76,8 +76,10 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
                               length_of_context,
                               generated_token_prefix_tree):
     traversed_tree = {}
-    longer_candidate = torch.zeros(size=(1, starting_point + n + 1), device=device, dtype=torch.long)
-    for _ in range(300):
+    longer_candidate = None
+    tried_num = 0
+    while tried_num < 1000 or not longer_candidate:
+        tried_num += 1
         tmp_generated = generated.clone().detach()
         tmp_tree = traversed_tree
         prefix_tree = generated_token_prefix_tree
@@ -134,6 +136,7 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
             longer_candidate = tmp_generated.clone().detach()
             # longer_candidate[:, :tmp_generated.size()[1]] = tmp_generated
             longer_candidate[0][-1] = 102
+            # print(f'stored current longest trim candidates')
     else:
         print('use saved longer candidate')
         return longer_candidate, n + starting_point + 1
@@ -189,7 +192,7 @@ def sample_sequence(model, context, length, n_ctx, tokenizer,
             index = new_index
 
             to_be_penalize = generated.tolist()[0][-distance - 1:]
-            print(f'to_be_penalize: {to_be_penalize}')
+            # print(f'to_be_penalize: {to_be_penalize}')
             for i in range(len(to_be_penalize) - 3):
                 prefix_tree = generated_token_prefix_tree
                 for token in to_be_penalize[i:]:
