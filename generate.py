@@ -380,12 +380,14 @@ def main():
             print(info)
             text = ''.join(text).replace('##', '').strip()
 
-            print(f'原始歌词：\t\t\t', end='')
-            print(f'生成歌词：')
+            ORIGINAL_LYRIC = 'original lyric:'
+            GENERATED_LYRIC = 'generated lyric:'
+            print(f'{ORIGINAL_LYRIC:20}', end='')
+            print(f'{GENERATED_LYRIC}')
             generated_lyric_lines = text.split('\n')
 
             for i, j in zip(original_lyric_text, generated_lyric_lines):
-                print(f'{i}\t\t\t', end='')
+                print(f'{i:20}', end='')
                 print(f'{j}')
 
             print('')
