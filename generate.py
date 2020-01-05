@@ -130,8 +130,8 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
             tmp_tree = tmp_tree[next_token.item()]
 
             index += 1
-
-            if next_token in [0, 100, 101, 102, 103]:
+            # note: this is to remove sequence containing improper space or other characters
+            if next_token < 500:
                 if index == n + 1:
                     # print(f'succeeded')
                     return tmp_generated, index + starting_point
