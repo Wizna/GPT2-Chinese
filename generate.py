@@ -112,7 +112,7 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
 
             if index == n:
                 if filtered_logits[102] != -float('Inf'):
-                    print('directly get a sep because it is in range')
+                    print('directly get a sep because it is in the range')
                     next_token = torch.tensor(data=[102], dtype=torch.long, device=device)
 
             tmp_generated = torch.cat((tmp_generated, next_token.unsqueeze(0)), dim=1)
@@ -131,19 +131,19 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
 
             index += 1
             # note: this is to remove sequence containing improper space or other characters
-            if next_token < 500:
+            if next_token < 143:
                 if index == n + 1:
                     # print(f'succeeded')
                     return tmp_generated, index + starting_point
                 else:
-                    print(f'has a sep at:{index}')
+                    print(f'generated a token to sep at: {index - 1}')
                     break
         else:
             longer_candidate = tmp_generated.clone().detach()
             longer_candidate[0][-1] = 102
-            print(f'stored current longest trim candidates')
+            print(f'stored current longest candidates')
     else:
-        print('use saved longer candidate')
+        print('use the saved longer candidate')
         return longer_candidate, n + starting_point + 1
 
 
@@ -172,18 +172,18 @@ def sample_sequence(model, context, length, n_ctx, tokenizer,
         token_descend = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word_descend))
         token_descend = [x for x in token_descend if x != 100]
 
-    print(f'the repeat_map:{repeat_map}')
+    print(f'the repeat_map: {repeat_map}')
     index = 2
 
     length_of_context = context.size()[1] - 2  # note: this 2 is compensate for the starting index 2
-    print(f'length of previous context:{length_of_context}')
+    print(f'length of previous context: {length_of_context}')
 
     generated_token_prefix_tree = {}
 
     with torch.no_grad():
         while index < length:
             distance = distance_from_next_sep(model_lyric, start=index)
-            print(f'generating index:{index}, needed distance:{distance}')
+            print(f'generating index: {index}, needed length: {distance}')
 
             generated, new_index = sample_sequence_of_length(model=model, n=distance, generated=generated, n_ctx=n_ctx,
                                                              token_descend=token_descend,
