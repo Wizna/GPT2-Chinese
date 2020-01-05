@@ -136,13 +136,12 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
                     # print(f'succeeded')
                     return tmp_generated, index + starting_point
                 else:
-                    # print(f'has a sep at:{index}')
+                    print(f'has a sep at:{index}')
                     break
         else:
             longer_candidate = tmp_generated.clone().detach()
-            # longer_candidate[:, :tmp_generated.size()[1]] = tmp_generated
             longer_candidate[0][-1] = 102
-            # print(f'stored current longest trim candidates')
+            print(f'stored current longest trim candidates')
     else:
         print('use saved longer candidate')
         return longer_candidate, n + starting_point + 1
@@ -380,14 +379,15 @@ def main():
             print(info)
             text = ''.join(text).replace('##', '').strip()
 
-            ORIGINAL_LYRIC = 'original lyric:'
-            GENERATED_LYRIC = 'generated lyric:'
-            print(f'{ORIGINAL_LYRIC:20}', end='')
+            ORIGINAL_LYRIC = 'original:'
+            GENERATED_LYRIC = 'generated:'
+            print(f'{ORIGINAL_LYRIC:40}', end='')
             print(f'{GENERATED_LYRIC}')
             generated_lyric_lines = text.split('\n')
 
             for i, j in zip(original_lyric_text, generated_lyric_lines):
-                print(f'{i:20}', end='')
+                to_length = 40 - len(i.replace(' ', ''))
+                print(i.ljust(to_length), end='')
                 print(f'{j}')
 
             print('')
