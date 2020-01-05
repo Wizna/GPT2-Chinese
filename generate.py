@@ -71,12 +71,17 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
 
 
 def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetition_penalty, top_k, top_p, temperature,
-                              tokenizer, repeat_map, starting_point, device, length_of_context):
+                              tokenizer, repeat_map, starting_point,
+                              device,
+                              length_of_context,
+                              generated_token_prefix_tree):
     traversed_tree = {}
-    longer_candidate = torch.zeros(size=(1, n + 1), device=device)
-    for _ in range(100):
+    longer_candidate = torch.zeros(size=(1, starting_point + n + 1), device=device, dtype=torch.long)
+    for _ in range(300):
         tmp_generated = generated.clone().detach()
         tmp_tree = traversed_tree
+        prefix_tree = generated_token_prefix_tree
+        same_depth = 0
         index = 0
         while index < n + 1:
             if (index + starting_point) in repeat_map:
@@ -96,15 +101,25 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
             inputs = {'input_ids': tmp_generated[0].unsqueeze(0)}
             outputs = model(**inputs)
             next_token_logits = outputs[0][0, -1, :] / temperature
+            # note: logits in log space, range from -inf to around 20.0
             next_token_logits[tokenizer.convert_tokens_to_ids('[UNK]')] = -float('Inf')
             next_token_logits[list(tmp_tree.keys())] /= (repetition_penalty ** (index + 1))
+            next_token_logits[list(prefix_tree.keys())] /= (repetition_penalty ** (same_depth + 1))
             filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
             next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
             tmp_generated = torch.cat((tmp_generated, next_token.unsqueeze(0)), dim=1)
             if next_token.item() not in tmp_tree:
                 tmp_tree[next_token.item()] = {}
 
+            if next_token.item() not in prefix_tree:
+                prefix_tree = generated_token_prefix_tree
+                same_depth = 0
+            else:
+                prefix_tree = prefix_tree[next_token.item()]
+                same_depth += 1
+
             tmp_tree = tmp_tree[next_token.item()]
+
             index += 1
 
             if next_token in [0, 100, 101, 102, 103]:
@@ -116,6 +131,7 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
                     break
         else:
             longer_candidate = tmp_generated.clone().detach()
+            # longer_candidate[:, :tmp_generated.size()[1]] = tmp_generated
             longer_candidate[0][-1] = 102
     else:
         print('use saved longer candidate')
@@ -153,6 +169,8 @@ def sample_sequence(model, context, length, n_ctx, tokenizer,
     length_of_context = context.size()[1] - 2  # note: this 2 is compensate for the starting index 2
     print(f'length of previous context:{length_of_context}')
 
+    generated_token_prefix_tree = {}
+
     with torch.no_grad():
         while index < length:
             distance = distance_from_next_sep(model_lyric, start=index)
@@ -165,8 +183,19 @@ def sample_sequence(model, context, length, n_ctx, tokenizer,
                                                              tokenizer=tokenizer, repeat_map=repeat_map,
                                                              starting_point=index,
                                                              device=device,
-                                                             length_of_context=length_of_context)
+                                                             length_of_context=length_of_context,
+                                                             generated_token_prefix_tree=generated_token_prefix_tree)
             index = new_index
+
+            to_be_penalize = generated.tolist()[0][-distance - 1:]
+            print(f'to_be_penalize: {to_be_penalize}')
+            for i in range(len(to_be_penalize) - 3):
+                prefix_tree = generated_token_prefix_tree
+                for token in to_be_penalize[i:]:
+                    if token not in prefix_tree:
+                        prefix_tree[token] = {}
+
+                    prefix_tree = prefix_tree[token]
 
     return generated.tolist()[0]
 
