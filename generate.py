@@ -78,7 +78,7 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
     traversed_tree = {}
     longer_candidate = None
     tried_num = 0
-    while tried_num < 1000 or not longer_candidate:
+    while tried_num < 1000 or longer_candidate is None:
         tried_num += 1
         tmp_generated = generated.clone().detach()
         tmp_tree = traversed_tree
@@ -279,6 +279,13 @@ def read_and_tokenize_text(file_path, tokenizer):
     return context_tokens
 
 
+def read_original_lyric_as_text(file_path):
+    with open(file_path, 'r', encoding='utf-8') as f:
+        data = f.read().splitlines()
+
+    return data
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', default='0,1,2,3', type=str, required=False, help='生成设备')
@@ -327,6 +334,8 @@ def main():
 
     n_ctx = model.config.n_ctx
 
+    original_lyric_text = read_original_lyric_as_text(args.original_lyric)
+
     if length == -1:
         length = model.config.n_ctx
     if args.save_samples:
@@ -370,7 +379,16 @@ def main():
             info = "=" * 40 + " SAMPLE " + str(generated) + " " + "=" * 40 + "\n"
             print(info)
             text = ''.join(text).replace('##', '').strip()
-            print(text)
+
+            print(f'原始歌词：\t\t\t', end='')
+            print(f'生成歌词：')
+            generated_lyric_lines = text.split('\n')
+
+            for i, j in zip(original_lyric_text, generated_lyric_lines):
+                print(f'{i}\t\t\t', end='')
+                print(f'{j}')
+
+            print('')
             if args.save_samples:
                 samples_file.write(info)
                 samples_file.write(text)
