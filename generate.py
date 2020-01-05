@@ -109,6 +109,12 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
             next_token_logits[list(prefix_tree.keys())] /= (repetition_penalty ** (same_depth + 1))
             filtered_logits = top_k_top_p_filtering(next_token_logits, top_k=top_k, top_p=top_p)
             next_token = torch.multinomial(F.softmax(filtered_logits, dim=-1), num_samples=1)
+
+            if index == n:
+                if filtered_logits[102] != -float('Inf'):
+                    print('directly get a sep because it is in range')
+                    next_token = torch.tensor(data=[102], dtype=torch.long, device=device)
+
             tmp_generated = torch.cat((tmp_generated, next_token.unsqueeze(0)), dim=1)
             if next_token.item() not in tmp_tree:
                 tmp_tree[next_token.item()] = {}
@@ -283,8 +289,8 @@ def main():
     parser.add_argument('--temperature', default=1, type=float, required=False, help='生成温度')
     parser.add_argument('--topk', default=8, type=int, required=False, help='最高几选一')
     parser.add_argument('--topp', default=0, type=float, required=False, help='最高积累概率')
-    parser.add_argument('--model_config', default='config/model_config_small.json', type=str, required=False,
-                        help='模型参数')
+    # parser.add_argument('--model_config', default='config/model_config_small.json', type=str, required=False,
+    #                     help='模型参数')
     parser.add_argument('--tokenizer_path', default='cache/vocab_small.txt', type=str, required=False, help='词表路径')
     parser.add_argument('--model_path', default='model/final_model', type=str, required=False, help='模型路径')
     parser.add_argument('--prefix', default='萧炎', type=str, required=False, help='生成文章的开头')
