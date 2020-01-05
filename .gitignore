@@ -13,6 +13,6 @@ data/
 3.6.3_venv
 tensorboard_summary
 
-original_lyric.txt
-pre_context.txt
+#original_lyric.txt
+#pre_context.txt
 
