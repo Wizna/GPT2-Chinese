@@ -114,7 +114,8 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
             if next_token.item() not in prefix_tree:
                 prefix_tree = generated_token_prefix_tree
                 same_depth = 0
-            else:
+
+            if next_token.item() in prefix_tree:
                 prefix_tree = prefix_tree[next_token.item()]
                 same_depth += 1
 
