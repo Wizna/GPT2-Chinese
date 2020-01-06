@@ -133,7 +133,7 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
             # note: this is to remove sequence containing improper space or other characters
             if next_token < 143:
                 if index == n + 1:
-                    # print(f'succeeded')
+                    tmp_generated[0][-1] = 102
                     return tmp_generated, index + starting_point
                 else:
                     print(f'generated a token to sep at: {index - 1}')
