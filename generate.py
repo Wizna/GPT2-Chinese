@@ -254,7 +254,7 @@ def find_repeating_sequence_from_list(arr):
     remain = set(i for i in range(len(arr)) if arr[i] != 102)
 
     for length in range(longest, 2, -1):
-        pos = [p for p in remain if p + length - 1 in remain]
+        pos = [p for p in remain if all(i in remain for i in range(p, p + length))]
         for s1, s2 in combinations(pos, 2):
             if s2 - s1 >= length and arr[s1:s1 + length] == arr[s2:s2 + length]:
                 remain -= set(range(s1, s1 + length))
