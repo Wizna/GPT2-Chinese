@@ -155,11 +155,13 @@ def distance_from_next_sep(lyric, start):
     return len(lyric) - start
 
 
-def penalize_sequence_in_prefix_tree(sequence, generated_token_prefix_tree, tokenizer):
+def penalize_sequence_in_prefix_tree(sequence, generated_token_prefix_tree, tokenizer=None):
     # note: only penalize sequence of length >= 3
     # also the sequence contain [102] at the end
-    text = tokenizer.convert_ids_to_tokens(sequence).split('[')[0]
-    print(f'to be penalize: {text}')
+    if tokenizer:
+        text = tokenizer.convert_ids_to_tokens(sequence)
+        text = ''.join(text)
+        print(f'to be penalize: {text}')
     for i in range(len(sequence) - 3):
         prefix_tree = generated_token_prefix_tree
         for token in sequence[i:]:
@@ -195,8 +197,9 @@ def sample_sequence(model, context, length, tokenizer,
             s = i + 1
 
     for seq in to_be_penalize_list:
-        penalize_sequence_in_prefix_tree(sequence=seq, generated_token_prefix_tree=generated_token_prefix_tree,
-                                         tokenizer=tokenizer)
+        penalize_sequence_in_prefix_tree(sequence=seq,
+                                         generated_token_prefix_tree=generated_token_prefix_tree,
+                                         tokenizer=None)
 
     with torch.no_grad():
         while index < length:
