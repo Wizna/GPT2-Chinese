@@ -40,13 +40,15 @@ def _is_chinese_char(char):
 
 
 def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')):
-    """ Filter a distribution of logits using top-k and/or nucleus (top-p) filtering
-        Args:
-            logits: logits distribution shape (vocabulary size)
-            top_k > 0: keep only top k tokens with highest probability (top-k filtering).
-            top_p > 0.0: keep the top tokens with cumulative probability >= top_p (nucleus filtering).
+    """
+    Filter a distribution of logits using top-k and/or nucleus (top-p) filtering
+    :param logits: logits distribution shape (vocabulary size)
+    :param top_k: keep only top k tokens with highest probability (top-k filtering)
+    :param top_p: keep the top tokens with cumulative probability >= top_p (nucleus filtering)
                 Nucleus filtering is described in Holtzman et al. (http://arxiv.org/abs/1904.09751)
-        From: https://gist.github.com/thomwolf/1a5a29f6962089e871b94cbd09daf317
+    :param filter_value: filtered logits
+    :return:
+     From: https://gist.github.com/thomwolf/1a5a29f6962089e871b94cbd09daf317
     """
     assert logits.dim() == 1  # batch size 1 for now - could be updated for more but the code would be less clear
     top_k = min(top_k, logits.size(-1))  # Safety check
@@ -70,7 +72,7 @@ def top_k_top_p_filtering(logits, top_k=0, top_p=0.0, filter_value=-float('Inf')
     return logits
 
 
-def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetition_penalty, top_k, top_p, temperature,
+def sample_sequence_of_length(model, n, generated, repetition_penalty, top_k, top_p, temperature,
                               tokenizer, repeat_map, starting_point,
                               device,
                               length_of_context,
@@ -88,10 +90,8 @@ def sample_sequence_of_length(model, n, generated, n_ctx, token_descend, repetit
         while index < n + 1:
             if (index + starting_point) in repeat_map:
                 start, span = repeat_map[index + starting_point]
-                tmp_generated = torch.cat((tmp_generated,
-                                           tmp_generated[0][
-                                           start + length_of_context:start + length_of_context + span].unsqueeze(
-                                               0)), dim=1)
+                start += length_of_context
+                tmp_generated = torch.cat((tmp_generated, tmp_generated[0][start:start + span].unsqueeze(0)), dim=1)
                 index += span
                 if index >= n:
                     tmp_generated = torch.cat((tmp_generated, torch.tensor([[102]], device=device)), dim=1)
@@ -155,22 +155,30 @@ def distance_from_next_sep(lyric, start):
     return len(lyric) - start
 
 
-def sample_sequence(model, context, length, n_ctx, tokenizer,
+def penalize_sequence_in_prefix_tree(sequence, generated_token_prefix_tree):
+    # note: only penalize sequence of length >= 3
+    # also the sequence contain [102] at the end
+
+    print(f'to be penalize: {sequence}')
+    for i in range(len(sequence) - 3):
+        prefix_tree = generated_token_prefix_tree
+        for token in sequence[i:]:
+            if token not in prefix_tree:
+                prefix_tree[token] = {}
+
+            prefix_tree = prefix_tree[token]
+
+
+def sample_sequence(model, context, length, tokenizer,
                     temperature=1.0,
                     top_k=30,
                     top_p=0.0,
                     repetition_penalty=1.0,
                     device='cpu',
-                    repeat_map={},
-                    model_lyric=[]):
-    context = torch.tensor(context, dtype=torch.long, device=device)
-    context = context.unsqueeze(0)
+                    repeat_map=None,
+                    model_lyric=None):
+    context = torch.tensor(context, dtype=torch.long, device=device).unsqueeze(0)
     generated = context
-
-    with open('word_frequency.txt', 'r', encoding='utf-8') as f:
-        word_descend = f.readline()
-        token_descend = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word_descend))
-        token_descend = [x for x in token_descend if x != 100]
 
     print(f'the repeat_map: {repeat_map}')
     index = 2
@@ -179,14 +187,22 @@ def sample_sequence(model, context, length, n_ctx, tokenizer,
     print(f'length of previous context: {length_of_context}')
 
     generated_token_prefix_tree = {}
+    to_be_penalize_list = []
+    s = index
+    for i in range(index, context.size()[1]):
+        if context[0][i] == 102:
+            to_be_penalize_list.append(context[0][s:i + 1])
+            s = i + 1
+
+    for seq in to_be_penalize_list:
+        penalize_sequence_in_prefix_tree(sequence=seq, generated_token_prefix_tree=generated_token_prefix_tree)
 
     with torch.no_grad():
         while index < length:
             distance = distance_from_next_sep(model_lyric, start=index)
             print(f'generating index: {index}, needed length: {distance}')
 
-            generated, new_index = sample_sequence_of_length(model=model, n=distance, generated=generated, n_ctx=n_ctx,
-                                                             token_descend=token_descend,
+            generated, new_index = sample_sequence_of_length(model=model, n=distance, generated=generated,
                                                              repetition_penalty=repetition_penalty,
                                                              top_k=top_k, top_p=top_p, temperature=temperature,
                                                              tokenizer=tokenizer, repeat_map=repeat_map,
@@ -197,54 +213,56 @@ def sample_sequence(model, context, length, n_ctx, tokenizer,
             index = new_index
 
             to_be_penalize = generated.tolist()[0][-distance - 1:]
-            # print(f'to_be_penalize: {to_be_penalize}')
-            for i in range(len(to_be_penalize) - 3):
-                prefix_tree = generated_token_prefix_tree
-                for token in to_be_penalize[i:]:
-                    if token not in prefix_tree:
-                        prefix_tree[token] = {}
-
-                    prefix_tree = prefix_tree[token]
+            penalize_sequence_in_prefix_tree(sequence=to_be_penalize,
+                                             generated_token_prefix_tree=generated_token_prefix_tree)
 
     return generated.tolist()[0]
 
 
-def fast_sample_sequence(model, context, length, temperature=1.0, top_k=30, top_p=0.0, device='cpu'):
-    inputs = torch.LongTensor(context).view(1, -1).to(device)
-    if len(context) > 1:
-        _, past = model(inputs[:, :-1], None)[:2]
-        prev = inputs[:, -1].view(1, -1)
-    else:
-        past = None
-        prev = inputs
-    generated = [] + context
-    with torch.no_grad():
-        for _ in trange(length):
-            output = model(prev, past=past)
-            output, past = output[:2]
-            output = output[-1].squeeze(0) / temperature
-            filtered_logits = top_k_top_p_filtering(output, top_k=top_k, top_p=top_p)
-            next_token = torch.multinomial(torch.softmax(filtered_logits, dim=-1), num_samples=1)
-            generated.append(next_token.item())
-            prev = next_token.view(1, 1)
-            if next_token in [101, 102]:
-                break
-    return generated
+# def fast_sample_sequence(model, context, length, temperature=1.0, top_k=30, top_p=0.0, device='cpu'):
+#     inputs = torch.LongTensor(context).view(1, -1).to(device)
+#     if len(context) > 1:
+#         _, past = model(inputs[:, :-1], None)[:2]
+#         prev = inputs[:, -1].view(1, -1)
+#     else:
+#         past = None
+#         prev = inputs
+#     generated = [] + context
+#     with torch.no_grad():
+#         for _ in trange(length):
+#             output = model(prev, past=past)
+#             output, past = output[:2]
+#             output = output[-1].squeeze(0) / temperature
+#             filtered_logits = top_k_top_p_filtering(output, top_k=top_k, top_p=top_p)
+#             next_token = torch.multinomial(torch.softmax(filtered_logits, dim=-1), num_samples=1)
+#             generated.append(next_token.item())
+#             prev = next_token.view(1, 1)
+#             if next_token in [101, 102]:
+#                 break
+#     return generated
 
 
 # 通过命令行参数--fast_pattern，指定模式
 def generate(n_ctx, model, context, length, tokenizer, temperature=1, top_k=0, top_p=0.0, repetition_penalty=1.0,
              device='cpu',
              is_fast_pattern=False,
-             repeat_map={},
-             model_lyric=[]):
+             repeat_map=None,
+             model_lyric=None):
     if is_fast_pattern:
-        return fast_sample_sequence(model, context, length, temperature=temperature, top_k=top_k, top_p=top_p,
-                                    device=device)
+        return None
+        # fast_sample_sequence(model, context, length, temperature=temperature, top_k=top_k, top_p=top_p,
+        #                         device=device)
     else:
-        return sample_sequence(model, context, length, n_ctx, tokenizer=tokenizer, temperature=temperature, top_k=top_k,
+        return sample_sequence(model=model,
+                               context=context,
+                               length=length,
+                               tokenizer=tokenizer,
+                               temperature=temperature,
+                               top_k=top_k,
                                top_p=top_p,
-                               repetition_penalty=repetition_penalty, device=device, repeat_map=repeat_map,
+                               repetition_penalty=repetition_penalty,
+                               device=device,
+                               repeat_map=repeat_map,
                                model_lyric=model_lyric)
 
 
@@ -316,7 +334,6 @@ def main():
         from tokenizations import tokenization_bert
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device  # 此处设置程序使用哪些显卡
-    length = args.length
     batch_size = args.batch_size
     nsamples = args.nsamples
     temperature = args.temperature
@@ -335,8 +352,6 @@ def main():
 
     original_lyric_text = read_original_lyric_as_text(args.original_lyric)
 
-    if length == -1:
-        length = model.config.n_ctx
     if args.save_samples:
         if not os.path.exists(args.save_samples_path):
             os.makedirs(args.save_samples_path)
@@ -379,10 +394,10 @@ def main():
             print(info)
             text = ''.join(text).replace('##', '').strip()
 
-            ORIGINAL_LYRIC = 'original:'
-            GENERATED_LYRIC = 'generated:'
-            print(f'{ORIGINAL_LYRIC:40}', end='')
-            print(f'{GENERATED_LYRIC}')
+            original_lyric = 'original:'
+            generated_lyric = 'generated:'
+            print(f'{original_lyric:40}', end='')
+            print(f'{generated_lyric}')
             generated_lyric_lines = text.split('\n')
 
             for i, j in zip(original_lyric_text, generated_lyric_lines):
