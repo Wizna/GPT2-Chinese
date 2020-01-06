@@ -197,7 +197,8 @@ def sample_sequence(model, context, length, tokenizer,
             s = i + 1
 
     for seq in to_be_penalize_list:
-        penalize_sequence_in_prefix_tree(sequence=seq,
+        seq_ints = seq.tolist()
+        penalize_sequence_in_prefix_tree(sequence=seq_ints,
                                          generated_token_prefix_tree=generated_token_prefix_tree,
                                          tokenizer=None)
 
